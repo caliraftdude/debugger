@@ -1,9 +1,13 @@
-import printf
-import unions
-
+﻿#import printf
+#import unions
 #printf.run()
 #unions.run()
 
 import debugger
 dbg = debugger.debugger()
-dbg.load("C:\\WINDOWS\\system32\\calc.exe")
+pid = raw_input("Enter the PID of the process to attach to: ")
+
+dbg.attach(int(pid))
+dbg.detach()
+
+#dbg.load("C:\\WINDOWS\\system32\\calc.exe")
