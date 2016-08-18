@@ -60,7 +60,7 @@ class debugger():
             self.debugger_active    = True
             self.pid                = int(pid)
         else:
-            print "[*] Unable to attach to the process.  Error: %s" % kernel32.GetLastError()
+            print "[*] Unable to attach to the process [%d] - %s" % (int(pid), FormatError(kernel32.GetLastError()))
 
     def run(self):
         # now we have to pass the debuggee for debugging events
