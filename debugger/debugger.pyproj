@@ -29,6 +29,9 @@
     <Compile Include="printf.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="printf_loop.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="test.py">
       <SubType>Code</SubType>
     </Compile>

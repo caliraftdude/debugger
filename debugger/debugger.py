@@ -8,6 +8,11 @@ class debugger():
         self.h_process          = None
         self.pid                = None
         self.debugger_active    = False
+        self.h_thread           = None
+        self.context            = None
+        self.exception          = None
+        self.exception_address  = None
+        self.breakpoints        = {}
 
     def load(self, path_to_exe):
         # dwCreation flag determines how to create the process
@@ -68,17 +73,6 @@ class debugger():
         while self.debugger_active == True:
             self.get_debug_event()
 
-    def get_debug_event(self):
-        debug_event         = DEBUG_EVENT()
-        continue_status     = DBG_CONTINUE
-
-        if kernel32.WaitForDebugEvent(byref(debug_event), INFINITE):
-            # We aren't going to build any event handlers just yet.
-            # Let's just resume the process for now.
-            raw_input("Press a key to continue...")
-            self.debugger_active = False
-            kernel32.ContinueDebugEvent(debug_event.dwProcessId, debug_event.dwThreadId, continue_status)
-
     def detach(self):
         if kernel32.DebugActiveProcessStop(self.pid):
             print "[*] Finished debugging.  Exiting..."
@@ -87,3 +81,129 @@ class debugger():
             print "There was an error"
             return False
 
+    def open_thread(self, thread_id):
+        h_thread = kernel32.OpenThread(THREAD_ALL_ACCESS, None, thread_id)
+
+        if h_thread is not None:
+            return h_thread
+        else:
+            print "[*] Could not obtain a valid thread handle."
+            return False
+
+    def enumerate_threads(self):
+        thread_entry = THREADENTRY32()
+        thread_list  = []
+        snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, self.pid)
+
+        if snapshot is not None:
+            # You have to set the size of the struct or the call will fail
+            thread_entry.dwSize = sizeof(thread_entry)
+            success = kernel32.Thread32First(snapshot, byref(thread_entry))
+
+            while success:
+                if thread_entry.th32OwnerProcessID == self.pid:
+                    thread_list.append(thread_entry.th32ThreadID)
+               
+                success = kernel32.Thread32Next(snapshot, byref(thread_entry))
+
+            kernel32.CloseHandle(snapshot)
+            return thread_list
+        else:
+            return False
+
+    def get_thread_context(self, thread_id=None, h_thread=None):
+        context = CONTEXT()
+        context.ContextFlags = CONTEXT_FULL | CONTEXT_DEBUG_REGISTERS
+        
+        # Obtain a handle to the thread
+        if not h_thread:
+            h_thread = self.open_thread(thread_id)
+
+        if kernel32.GetThreadContext(h_thread, byref(context)):
+            kernel32.CloseHandle(h_thread)
+            return context
+        else:
+            return False
+
+    def get_debug_event(self):
+        debug_event         = DEBUG_EVENT()
+        continue_status     = DBG_CONTINUE
+
+        if kernel32.WaitForDebugEvent(byref(debug_event), INFINITE):
+            # Obtain the thread and context information
+            self.h_thread   = self.open_thread(debug_event.dwThreadId)
+            self.context    = self.get_thread_context(h_thread = self.h_thread)
+
+            print "Event Code: %d Thread ID: %d" % (debug_event.dwDebugEventCode, debug_event.dwThreadId)
+
+            # If the event code is an exception, examine it further
+            if debug_event.dwDebugEventCode == EXCEPTION_DEBUG_EVENT:
+                # Obtain exception code
+                exception = debug_event.u.Exception.ExceptionRecord.ExceptionCode
+                self.exception_address = debug_event.u.Exception.ExceptionRecord.ExceptionAddress
+
+                if exception == EXCEPTION_ACCESS_VIOLATION:
+                    print "Access Violation Detected"
+
+                elif exception == EXCEPTION_BREAKPOINT:
+                    # Soft breakpoint found, pass to exception handler
+                    continue_status = self.exception_handler_breakpoint()
+
+                elif exception == EXCEPTION_GUARD_PAGE:
+                    # Hardware breakpoint found, 
+                    print "Guard Page Access Detected."
+
+                elif exception == EXCEPTION_SINGLE_STEP:
+                    # Memory breakpoint found, 
+                    print "Single Stepping."
+
+            kernel32.ContinueDebugEvent(debug_event.dwProcessId, debug_event.dwThreadId, continue_status)
+
+    def exception_handler_breakpoint(self):
+        print "[*] Inside the breakpoint handler"
+        print "Exception Address: 0x%08x" % self.exception_address
+        return DBG_CONTINUE
+
+    def read_process_memory(self, address, length):
+        data        = ""
+        read_buf    = create_string_buffer(length)
+        count       = c_ulong(0)
+
+        if not kernel32.ReadProcessMemory(self.h_process, address, read_buf, length, byref(count)):
+            return False
+        else:
+            data    += read_buf.raw
+            return data
+    
+    def write_process_memory(self, address, data):
+        count       = c_ulong(0)
+        length      = len(data)
+        c_data      = c_char_p(data[count.value:])
+
+        if not kernel32.WriteProcessMemory(self.h_process, address, c_data, length, byref(count)):
+            return False
+        else:
+            return True
+
+    def bp_set(self, address):
+        if not self.breakpoints.has_key(address):
+            try:
+                # store the original byte
+                original_byte = self.read_process_memory(address, 1)
+
+                # write the INT3 opcode
+                self.write_process_memory(address, "\xCC")
+
+                # register the breakpoint in our internal list
+                self.breakpoints[address] = (address, original_byte)
+            except:
+                return False
+
+        return True
+
+    def func_resolve(self, dll, function):
+        handle  = kernel32.GetModuleHandleA(dll)
+        address = kernel32.GetProcAddress(handle, function)
+
+        kernel32.CloseHandle(handle)
+        return address
