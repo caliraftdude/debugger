@@ -17,9 +17,7 @@ class debugger():
         self.first_breakpoint=     True
         self.hardware_breakpoints = {}
         
-        # Here let's determine and store 
-        # the default page size for the system
-        # determine the system page size.
+        # Determine and store the default page size for the system and system page size.
         system_info = SYSTEM_INFO()
         kernel32.GetSystemInfo(byref(system_info))
         self.page_size = system_info.dwPageSize
@@ -30,24 +28,21 @@ class debugger():
         
     def load(self,path_to_exe):
         
-        # dwCreation flag determines how to create the process
-        # set creation_flags = CREATE_NEW_CONSOLE if you want
-        # to see the calculator GUI
+        # dwCreation flag determines how to create the process set creation_flags = CREATE_NEW_CONSOLE 
+        # if you want to see the calculator GUI
         creation_flags = DEBUG_PROCESS
     
         # instantiate the structs
         startupinfo         = STARTUPINFO()
         process_information = PROCESS_INFORMATION()
         
-        # The following two options allow the started process
-        # to be shown as a separate window. This also illustrates
-        # how different settings in the STARTUPINFO struct can affect
+        # The following two options allow the started process to be shown as a separate window.
+        # This also illustrates how different settings in the STARTUPINFO struct can affect
         # the debuggee.
         startupinfo.dwFlags     = 0x1
         startupinfo.wShowWindow = 0x0
         
-        # We then initialize the cb variable in the STARTUPINFO struct
-        # which is just the size of the struct itself
+        # Initialize the cb variable in the STARTUPINFO struct which is just the size of the struct itself
         startupinfo.cb = sizeof(startupinfo)
         
         if kernel32.CreateProcessA(path_to_exe,
@@ -92,8 +87,7 @@ class debugger():
             
     def run(self):
         
-        # Now we have to poll the debuggee for 
-        # debugging events           
+        # Now we have to poll the debuggee for debugging events           
         while self.debugger_active == True:
             self.get_debug_event() 
     
@@ -156,8 +150,7 @@ class debugger():
         
         if snapshot is not None:
         
-            # You have to set the size of the struct
-            # or the call will fail
+            # You have to set the size of the struct or the call will fail
             thread_entry.dwSize = sizeof(thread_entry)
 
             success = kernel32.Thread32First(snapshot, byref(thread_entry))
@@ -168,8 +161,7 @@ class debugger():
     
                 success = kernel32.Thread32Next(snapshot, byref(thread_entry))
             
-            # No need to explain this call, it closes handles
-            # so that we don't leak them.
+            # No need to explain this call, it closes handles so that we don't leak them.
             kernel32.CloseHandle(snapshot)
             return thread_list
         else:
@@ -191,7 +183,6 @@ class debugger():
             return False
     
     def read_process_memory(self,address,length):
-        
         data         = ""
         read_buf     = create_string_buffer(length)
         count        = c_ulong(0)
@@ -204,7 +195,6 @@ class debugger():
     
     
     def write_process_memory(self,address,data):
-        
         count  = c_ulong(0)
         length = len(data)
         
@@ -241,8 +231,7 @@ class debugger():
         # check if the breakpoint is one that we set
         if not self.breakpoints.has_key(self.exception_address):
            
-                # if it is the first Windows driven breakpoint
-                # then let's just continue on
+                # if it is the first Windows driven breakpoint then let's just continue on
                 if self.first_breakpoint == True:
                    self.first_breakpoint = False
                    print "[*] Hit the first breakpoint."
@@ -250,13 +239,11 @@ class debugger():
                
         else:
             print "[*] Hit user defined breakpoint."
-            # this is where we handle the breakpoints we set 
-            # first put the original byte back
+            # this is where we handle the breakpoints we set first put the original byte back
             self.write_process_memory(self.exception_address, self.breakpoints[self.exception_address])
 
-            # obtain a fresh context record, reset EIP back to the 
-            # original byte and then set the thread's context record
-            # with the new EIP value
+            # obtain a fresh context record, reset EIP back to the original byte and then 
+            # set the thread's context record with the new EIP value
             self.context = self.get_thread_context(h_thread=self.h_thread)
             self.context.Eip -= 1
             
@@ -268,7 +255,6 @@ class debugger():
         return continue_status
 
     def func_resolve(self,dll,function):
-        
         handle  = kernel32.GetModuleHandleA(dll)
         address = kernel32.GetProcAddress(handle, function)
         
@@ -289,14 +275,10 @@ class debugger():
             return False
         
         # Check for available slots
-        if not self.hardware_breakpoints.has_key(0):
-            available = 0
-        elif not self.hardware_breakpoints.has_key(1):
-            available = 1
-        elif not self.hardware_breakpoints.has_key(2):
-            available = 2
-        elif not self.hardware_breakpoints.has_key(3):
-            available = 3
+        if not self.hardware_breakpoints.has_key(0):    available = 0
+        elif not self.hardware_breakpoints.has_key(1):  available = 1
+        elif not self.hardware_breakpoints.has_key(2):  available = 2
+        elif not self.hardware_breakpoints.has_key(3):  available = 3
         else:
             return False
 
@@ -304,12 +286,10 @@ class debugger():
         for thread_id in self.enumerate_threads():
             context = self.get_thread_context(thread_id=thread_id)
 
-            # Enable the appropriate flag in the DR7
-            # register to set the breakpoint
+            # Enable the appropriate flag in the DR7 register to set the breakpoint
             context.Dr7 |= 1 << (available * 2)
 
-            # Save the address of the breakpoint in the
-            # free register that we found
+            # Save the address of the breakpoint in the free register that we found
             if   available == 0: context.Dr0 = address
             elif available == 1: context.Dr1 = address
             elif available == 2: context.Dr2 = address
@@ -322,7 +302,6 @@ class debugger():
             context.Dr7 |= length << ((available * 4) + 18)
 
             # Set this threads context with the debug registers
-            # set
             h_thread = self.open_thread(thread_id)
             kernel32.SetThreadContext(h_thread,byref(context))
 
@@ -337,15 +316,10 @@ class debugger():
         # determine if this single step event occured in reaction to a hardware breakpoint and grab the hit breakpoint.
         # according to the Intel docs, we should be able to check for the BS flag in Dr6. but it appears that windows
         # isn't properly propogating that flag down to us.
-        if self.context.Dr6 & 0x1 and self.hardware_breakpoints.has_key(0):
-            slot = 0
-
-        elif self.context.Dr6 & 0x2 and self.hardware_breakpoints.has_key(1):
-            slot = 0
-        elif self.context.Dr6 & 0x4 and self.hardware_breakpoints.has_key(2):
-            slot = 0
-        elif self.context.Dr6 & 0x8 and self.hardware_breakpoints.has_key(3):
-            slot = 0
+        if self.context.Dr6 & 0x1 and self.hardware_breakpoints.has_key(0):     slot = 0
+        elif self.context.Dr6 & 0x2 and self.hardware_breakpoints.has_key(1):   slot = 0
+        elif self.context.Dr6 & 0x4 and self.hardware_breakpoints.has_key(2):   slot = 0
+        elif self.context.Dr6 & 0x8 and self.hardware_breakpoints.has_key(3):   slot = 0
         else:
             # This wasn't an INT1 generated by a hw breakpoint
             continue_status = DBG_EXCEPTION_NOT_HANDLED
@@ -368,14 +342,10 @@ class debugger():
             context.Dr7 &= ~(1 << (slot * 2))
 
             # Zero out the address
-            if   slot == 0: 
-                context.Dr0 = 0x00000000
-            elif slot == 1: 
-                context.Dr1 = 0x00000000
-            elif slot == 2: 
-                context.Dr2 = 0x00000000
-            elif slot == 3: 
-                context.Dr3 = 0x00000000
+            if   slot == 0:     context.Dr0 = 0x00000000
+            elif slot == 1:     context.Dr1 = 0x00000000
+            elif slot == 2:     context.Dr2 = 0x00000000
+            elif slot == 3:     context.Dr3 = 0x00000000
 
             # Remove the condition flag
             context.Dr7 &= ~(3 << ((slot * 4) + 16))
@@ -404,12 +374,10 @@ class debugger():
     
         current_page = mbi.BaseAddress
     
-        # We will set the permissions on all pages that are
-        # affected by our memory breakpoint.
+        # We will set the permissions on all pages that are  affected by our memory breakpoint.
         while current_page <= address + size:
         
-            # Add the page to the list, this will
-            # differentiate our guarded pages from those
+            # Add the page to the list, this will differentiate our guarded pages from those
             # that were set by the OS or the debuggee process
             self.guarded_pages.append(current_page)
             
@@ -417,8 +385,7 @@ class debugger():
             if not kernel32.VirtualProtectEx(self.h_process, current_page, size, mbi.Protect | PAGE_GUARD, byref(old_protection)):
                 return False
          
-            # Increase our range by the size of the
-            # default system memory page size
+            # Increase our range by the size of the default system memory page size
             current_page += self.page_size
     
         # Add the memory breakpoint to our global list
