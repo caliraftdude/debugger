@@ -124,7 +124,6 @@ class debugger():
 
             
     def detach(self):
-        
         if kernel32.DebugActiveProcessStop(self.pid):
             print "[*] Finished debugging. Exiting..."
             return True
@@ -133,7 +132,6 @@ class debugger():
             return False
     
     def open_thread (self, thread_id):
-        
         h_thread = kernel32.OpenThread(THREAD_ALL_ACCESS, None, thread_id)
         
         if h_thread is not None:
@@ -142,8 +140,7 @@ class debugger():
             print "[*] Could not obtain a valid thread handle."
             return False
         
-    def enumerate_threads(self):
-              
+    def enumerate_threads(self):     
         thread_entry     = THREADENTRY32()
         thread_list      = []
         snapshot         = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, self.pid)
@@ -168,7 +165,6 @@ class debugger():
             return False
         
     def get_thread_context (self, thread_id=None,h_thread=None):
-        
         context = CONTEXT()
         context.ContextFlags = CONTEXT_FULL | CONTEXT_DEBUG_REGISTERS
         
@@ -364,14 +360,12 @@ class debugger():
 
     #TODO: test
     def bp_set_mem (self, address, size):
-        
         mbi = MEMORY_BASIC_INFORMATION()
         
         # Attempt to discover the base address of the memory page
         if kernel32.VirtualQueryEx(self.h_process, address, byref(mbi), sizeof(mbi)) < sizeof(mbi):
             return False
 
-    
         current_page = mbi.BaseAddress
     
         # We will set the permissions on all pages that are  affected by our memory breakpoint.
